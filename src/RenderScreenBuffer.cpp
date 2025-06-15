@@ -1,52 +1,40 @@
 #include "RenderScreenBuffer/RenderScreenBuffer.hpp"
 
-RenderScreenBuffer::RenderScreenBuffer() {}
+RenderScreenBuffer::RenderScreenBuffer(IDirect3DDevice9* device, RECT rect)
+    : device_(device), render_texture_(nullptr), rect_(rect) {}
 
-RenderScreenBuffer::~RenderScreenBuffer() {
-  if (back_buffer_) back_buffer_->Release();
-  if (system_surface_) system_surface_->Release();
+RenderScreenBuffer::~RenderScreenBuffer() { Invalidate(); }
+
+void RenderScreenBuffer::Invalidate() {
   if (render_texture_) render_texture_->Release();
 }
 
 IDirect3DTexture9* RenderScreenBuffer::GetBuffer() {
-  if (FAILED(
-          device_->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &back_buffer_)))
-    return nullptr;
+  if (!device_) return nullptr;
 
-  // Копируем в системную память
-  if (FAILED(device_->GetRenderTargetData(back_buffer_, system_surface_))) {
-    back_buffer_->Release();
-    return nullptr;
+  if (!render_texture_) {
+    const auto width = rect_.right - rect_.left;
+    const auto height = rect_.bottom - rect_.top;
+    if (FAILED(device_->CreateTexture(width, height, 1, D3DUSAGE_RENDERTARGET,
+                                      D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT,
+                                      &render_texture_, nullptr))) {
+      render_texture_ = nullptr;
+    }
   }
 
-  // Получаем поверхность текстуры
+  IDirect3DSurface9* back_buffer;
+  if (FAILED(
+          device_->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &back_buffer)))
+    return nullptr;
+
   IDirect3DSurface9* texture_surface = nullptr;
   if (SUCCEEDED(render_texture_->GetSurfaceLevel(0, &texture_surface))) {
-    // Копируем данные в текстуру
-    device_->UpdateSurface(system_surface_, nullptr, texture_surface, nullptr);
+    device_->StretchRect(back_buffer, &rect_, texture_surface, nullptr,
+                         D3DTEXF_NONE);
     texture_surface->Release();
   }
 
-  back_buffer_->Release();
+  back_buffer->Release();
 
   return render_texture_;
 }
-
-#ifndef RENDER_SCREEN_BUFFER_STATIC_DEFINE
-RenderScreenBuffer* core = nullptr;
-
-void* RenderScreenBufferInitialize() {
-  core = new RenderScreenBuffer();
-  return core;
-}
-
-void RenderScreenBufferRelease() {
-  delete core;
-  core = nullptr;
-}
-
-IDirect3DTexture9* RenderScreenBufferGetBuffer() {
-  if (!core) return nullptr;
-  return core->GetBuffer();
-}
-#endif
