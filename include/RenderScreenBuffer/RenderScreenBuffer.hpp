@@ -15,7 +15,4 @@ class RenderScreenBuffer {
 
   void Invalidate();
   IDirect3DTexture9* GetBuffer();
-
- private:
-  void CreateTexture();
 };
